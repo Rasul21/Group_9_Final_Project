@@ -1,0 +1,487 @@
+---
+title: "Data_vis_final"
+output: html_document
+author: "Group 9: Ozlem Cuhaci, Joseph Perrin, Advait Jayant, Rasul Rasulov, Lexin Xu"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(vroom)
+library(Hmisc)
+library(janitor)
+library(skimr)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(qdap)
+library(NLP)
+library(tm)
+library(ggridges)
+library(lubridate)
+library(RColorBrewer)
+library(RWeka)
+library(wordcloud)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r vg}
+vgsales<-fread("vgchartz-12_1_2020.csv")
+
+describe(vgsales)
+```
+
+## Cleaning data
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+#let's start by having a look at the data
+vgsales<-clean_names(vgsales)
+skim(vgsales)
+
+vgsales<-vgsales %>% 
+  mutate(year=year_of_release) %>% 
+  mutate(year=as.integer(year)) %>% 
+  mutate(user_score=as.integer(user_score)) %>% 
+  mutate()
+skim(vgsales)
+```
+
+```{r hh, echo=FALSE}
+#there are some NA's in the data but they are considered as character values, so let's change that
+vgsales<-vgsales %>% 
+  filter(!is.na(critic_score)) %>% 
+  filter(!is.na(year))
+  #mutate(name=ifelse(name=="N/A", NA, name)) %>% 
+  #mutate(genre=ifelse(genre=="N/A", NA, genre)) %>% 
+  #mutate(publisher=ifelse(publisher=="N/A" | publisher=="Unknown", NA, publisher)) %>%
+  #mutate(platform=ifelse(platform=="N/A", NA, platform)) 
+
+#check what missing we have
+skim(vgsales)
+```
+
+```{r unique, echo=FALSE}
+#check distinct values to see other types of missing data
+unique(vgsales$platform)
+unique(vgsales$genre)
+unique(vgsales$publisher)
+```
+
+```{r merging, echo=FALSE}
+vgsales<-vgsales %>% 
+  mutate(publisher=ifelse(publisher=="Sony Computer Entertainment Europe" | publisher=="Sony Computer Entertainment America" | publisher=="Sony Online Entertainment" | publisher=="Sony Music Entertainment", "Sony Computer Entertainment", publisher))
+
+
+```
+
+```{r distribution , echo=FALSE}
+#Check the distribution of variables
+summary(vgsales$na_sales)
+summary(vgsales$year)
+summary(vgsales$eu_sales)
+summary(vgsales$jp_sales)
+summary(vgsales$other_sales)
+summary(vgsales$global_sales)
+
+ggplot(vgsales, aes(x=na_sales))+
+  geom_histogram()
+
+ggplot(vgsales, aes(x=na_sales))+
+  geom_boxplot()
+
+ggplot(vgsales, aes(x=eu_sales))+
+  geom_histogram()
+
+ggplot(vgsales, aes(x=eu_sales))+
+  geom_boxplot()
+
+ggplot(vgsales, aes(x=jp_sales))+
+  geom_histogram()
+
+ggplot(vgsales, aes(x=jp_sales))+
+  geom_boxplot()
+
+ggplot(vgsales, aes(x=other_sales))+
+  geom_histogram()
+
+ggplot(vgsales, aes(x=other_sales))+
+  geom_boxplot()
+
+ggplot(vgsales, aes(x=global_sales))+
+  geom_histogram()
+
+ggplot(vgsales, aes(x=global_sales))+
+  geom_boxplot()
+```
+
+
+```{r histograms, echo=FALSE}
+vgsales %>% 
+  filter(na_sales<2) %>% 
+ggplot(aes(x=na_sales))+
+  geom_histogram()
+
+vgsales %>% 
+  filter(eu_sales<2) %>% 
+ggplot(aes(x=eu_sales))+
+  geom_histogram()
+
+vgsales %>% 
+  filter(jp_sales<2) %>% 
+ggplot(aes(x=jp_sales))+
+  geom_histogram()
+
+vgsales %>% 
+  filter(other_sales<2) %>% 
+ggplot(aes(x=other_sales))+
+  geom_histogram()
+
+vgsales %>% 
+  filter(global_sales<2) %>% 
+ggplot(aes(x=global_sales))+
+  geom_histogram()
+```
+
+```{r freq1, echo=FALSE}
+#the most frequent years
+vgsales_fyrs <- vgsales %>% 
+group_by(year) %>% 
+  summarise(count=n()) %>% 
+  arrange(desc(year))
+
+vgsales_ssyrs <- vgsales %>% 
+group_by(year) %>% 
+  summarise(sales_per_year=sum(global_sales)) %>% 
+  arrange(desc(year))
+
+vgsales_fyrs %>% 
+  ggplot(aes(x=year, y=count))+
+  geom_col()
+
+vgsales_ssyrs
+
+vgsales_ssyrs %>% 
+  ggplot(aes(x=year, y=sales_per_year))+
+  geom_col()
+  
+```
+
+```{r freq2, echo=FALSE}
+#the most frequent years
+vgsales_nm <- vgsales %>% 
+group_by(name) %>% 
+  summarise(count=n()) %>% 
+  arrange(desc(count)) %>% 
+  head(10)
+
+vgsales_ssnm <- vgsales %>% 
+group_by(name) %>% 
+  summarise(sales_per_year=sum(global_sales)) %>% 
+  arrange(desc(sales_per_year)) %>% 
+  head(10)
+
+vgsales_nm %>% 
+  ggplot(aes(x=name, y=count))+
+  geom_col()
+
+vgsales_ssnm %>% 
+  ggplot(aes(x=name, y=sales_per_year))+
+  geom_col()
+```
+
+```{r freq3, echo=FALSE}
+
+#the most frequent years
+vgsales_graph <- vgsales %>%
+group_by(name)%>% 
+  summarise(global_sales=sum(global_sales), publisher) %>% 
+group_by(global_sales) %>%
+  arrange(desc(global_sales)) %>% 
+  head(200) %>% 
+group_by(publisher) %>% 
+summarise(count=n()) %>% 
+arrange(desc(count)) %>% 
+head(10) 
+
+
+library(ggtext)
+my_colours <- c('#253494', '#c7e9b4', '#081d58', '#7fcdbb', '#ffffd5', '#41b6c4', '#ffffd9', '#1d91c0', '#225ea8', '#edf8b1')
+label <- "80% of the Top 200 Most\nSuccessful Games were\ncreated by the best\n5 publishers"
+vgsales_graph %>% 
+  ggplot(aes(x=reorder(publisher, count), y=count, fill=publisher))+
+  geom_col(stat="identity") +
+  scale_fill_manual(values=my_colours) +
+  labs(title = "*<span style = 'font-size:18pt'><span style='color:#081d58'>*Electronic Arts has been smashing\nall its hits out the park**</span>", x='',y='', subtitle = " Number of Successful Games per Publisher")+
+  geom_text(aes(label=count), hjust=-0.3, size=3.5, color="#081d58", face="bold")+
+  coord_flip()+
+  theme_minimal() +
+  theme(plot.title.position = "plot") +
+  ylim(0,65) +
+
+   geom_label(
+    data = data.frame(x = 6, y = 50, label = label),
+    aes(x = x, y = y, label = label),
+    colour="#081d58",
+    face="bold",
+    size=3.5,
+    hjust = 0.5,
+    lineheight = 1,
+    inherit.aes = FALSE,
+  ) +
+  
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.ticks=element_blank(),
+        axis.text.x=element_blank(),
+        plot.title = ggtext::element_markdown(),
+        legend.position = "none",
+        axis.text.y = element_text(size=9, color="#081d58"),
+        plot.subtitle = element_text(color="#081d58")
+        )
+```
+
+```{r freq4, echo=FALSE}
+
+#the most frequent years
+vgsales_graph2 <- vgsales %>%
+filter(publisher==c("Electronic Arts", "Activision", "Ubisoft", "Take-Two Interactive", "Nintendo")) %>% 
+  group_by(publisher) %>% 
+  summarise(eu_sales=sum(eu_sales), na_sales=sum(na_sales), jp_sales=sum(jp_sales), other_sales=sum(other_sales))
+
+vgsales_graph2$publisher <- factor(vgsales_graph2$publisher, levels = c("Electronic Arts", "Activision", "Ubisoft", "Take-Two Interactive", "Nintendo"))
+vgsales_graph2_1<-vgsales_graph2 %>% 
+  pivot_longer(names_to="region", values_to="sales", cols=c(eu_sales, na_sales, jp_sales, other_sales)) 
+
+  vgsales_graph2_2<-vgsales_graph2_1 %>% 
+  group_by(publisher) %>% 
+  mutate(percentage_sales=sales/sum(sales))
+
+
+library(ggtext)
+vgsales_graph2_1 %>% 
+ ggplot(aes(fill=region, x=publisher, y=sales))+
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_manual(labels = c("Europe", "Japan", "North America", "Other"), values=c("#225ea8", "#ffffd9", "#7fcdbb", "#41b6c4")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(title="*<span style = 'font-size:18pt'><span style='color:#081d58'>*Nintendo is the king in Japan**</span>", subtitle="Breakdown of top-selling publishers' revenues by regions") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title.position = "plot",
+        legend.title = element_blank(), 
+        plot.title = ggtext::element_markdown(),
+        #plot.subtitle = element_markdown(lineheight = 1.1),
+        axis.title.x = element_blank(),
+        axis.text = element_text(size=10, color="#081d58"),
+        axis.title.y = element_blank(),
+        plot.subtitle = element_text(color="#081d58"),
+        legend.text = element_text(color="#081d58"))
+        
+```
+
+```{r graph3, echo=FALSE}
+
+#the most frequent years
+vgsales_graph3 <- vgsales %>%
+  filter(!is.na(year)) %>% 
+  filter(year==2001:2015) %>% 
+mutate(brand=case_when(platform=="PS"~"PlayStation",
+                       platform=="PS2"~"PlayStation",
+                       platform=="PS3"~"PlayStation",
+                       platform=="PS4"~"PlayStation",
+                       platform=="PSP"~"PlayStation",
+                       platform=="PSV"~"PlayStation",
+                       platform=="XB"~"Xbox",
+                       platform=="X360"~"Xbox",
+                       platform=="XOne"~"Xbox",
+                       platform=="3DS"~"Nintendo",
+                       platform=="DS"~"Nintendo",
+                       platform=="Wii"~"Nintendo",
+                       platform=="WiiU"~"Nintendo",
+                       platform=="NES"~"Nintendo",
+                       platform=="GB"~"Nintendo",
+                       platform=="SNES"~"Nintendo",
+                       platform=="GBA"~"Nintendo",
+                       platform=="N64"~"Nintendo",
+                       platform=="GC"~"Nintendo",
+                       platform=="DC"~"Sega",
+                       platform=="SAT"~"Sega",
+                       platform=="2600"~"Atari",
+                       platform=="SCD"~"Sega",
+                       platform=="WS"~"Bandai",
+                       platform=="TG16"~"NEC",
+                       platform=="PCFX"~"NEC",
+                       platform=="3DO"~"LG",
+                       platform=="GG"~"Sega",
+                       platform=="NG"~"SNK",
+                       platform=="PC"~"PC",
+                       platform=="GEN"~"GEN",
+                       )) %>% 
+  group_by(brand, year) %>% 
+  summarise(brand_sales=sum(global_sales)) %>% 
+  filter(brand %in% c("Nintendo", "PlayStation", "Xbox"))
+
+vgsales_graph3 %>% 
+  ggplot(aes(x=year, y=brand_sales, fill=brand))+
+  geom_area()
+
+
+```
+
+```{r graph4, echo=FALSE}
+
+#the most frequent years
+vgsales_graph2 <- vgsales %>%
+filter(publisher==c("Electronic Arts", "Activision", "Nintendo", "Take-Two Interactive", "Ubisoft")) %>% 
+  group_by(publisher) %>% 
+  summarise(eu_sales=sum(eu_sales), na_sales=sum(na_sales), jp_sales=sum(jp_sales), other_sales=sum(other_sales))
+
+vgsales_graph2_1<-vgsales_graph2 %>% 
+  pivot_longer(names_to="region", values_to="sales", cols=c(eu_sales, na_sales, jp_sales, other_sales))
+  
+vgsales_graph2_1
+
+
+vgsales_graph2_1 %>% 
+ ggplot(aes(fill=region, x=publisher, y=sales))+
+  geom_bar(position="fill", stat="identity")
+
+
+```
+
+```{r graph5, echo=FALSE}
+platforms_recent_years <- vgsales %>%
+    filter(year >= 2012) %>%
+    group_by(year,platform) %>%
+    summarise(sum_games = n())
+
+platforms_recent_years <- platforms_recent_years[with(platforms_recent_years,order(desc(year),-sum_games)),] #sort by release year and number of games released
+top_release <- by(platforms_recent_years, platforms_recent_years$year, function(X) X[1:5,])
+platforms_recent_years <- do.call("rbind", top_release) #get top 5 platforms in each year
+platforms_recent_years$platform <- factor(platforms_recent_years$platform, levels = unique(platforms_recent_years$platform[order(platforms_recent_years$sum_games)])) # to order the variables on the plot
+
+ggplot(platforms_recent_years, aes(x=platform, y=sum_games, color=as.factor(year))) +
+    geom_point(size=3) + 
+    geom_segment(aes(x=platform,xend=platform, y=0, yend=sum_games)) +
+    scale_color_manual(values=c("#081d58", "#225ea8", "#1d91c0", "#41b6c4", "#7fcdbb")) +
+    labs(title="*<span style = 'font-size:18pt'><span style='color:#081d58'>*PlayStation have been leading the way for years**</span>", subtitle = "Top Platforms in terms of number of games supported each year", x='',y='') +
+    geom_text(aes(label=sum_games), hjust = -1, size = 3.5)  +
+    facet_wrap(~ year, nrow = 5, scales = 'free', strip.position = 'right') +
+    ylim(0, max(platforms_recent_years$sum_games + 10)) +
+    coord_flip()+
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.text.x = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor= element_blank(),
+          plot.title = ggtext::element_markdown(),
+          plot.title.position = "plot",
+          plot.subtitle=element_text(color="#081d58"),
+          axis.text.y.left=element_text(color="#081d58"),
+          axis.text.y.right = element_text(color="#081d58"),
+          strip.text.y = element_text(
+        size = 10, color = "#081d58", face = "bold"
+        ))
+```
+
+```{r graph6}
+  
+unique_titles <- vgsales[!duplicated(vgsales$name),]  %>% 
+  filter(genre %in% c("Action", "Shooter"))
+
+qdap_clean <- function(x) { 
+    x <- replace_abbreviation(x) 
+    x <- replace_contraction(x) 
+    x <- replace_number(x) 
+    x <- replace_ordinal(x) 
+    x <- replace_symbol(x) 
+    x <- tolower(x) 
+    return(x) 
+    }
+
+tm_clean <- function(corpus) {
+    corpus <- tm_map(corpus, removePunctuation)
+    corpus <- tm_map(corpus, stripWhitespace)
+    corpus <- tm_map(corpus, removeWords,
+                     c(stopwords("en"), "one", "two", "three", "four", "five", "six", "seven","thousand","i","ii", "iii","iv","fifa","nhl","nfl","nba"))
+    return(corpus)
+    }
+
+tokenizer <- function(x) 
+  NGramTokenizer(x, Weka_control(min = 1, max = 2))
+names_best <- unique_titles %>% 
+    filter(critic_score >= 81) %>%
+    select(name)
+names_worst <- unique_titles %>% 
+    filter(critic_score <= 60) %>%
+    select(name)
+    
+names_best <- qdap_clean(names_best)
+names_worst <- qdap_clean(names_worst)
+
+names_worst <- tail(names_worst, 3209) # in order both to have same length
+names_best_worst <- cbind(names_best, names_worst)
+
+names_b_w_corp <- VCorpus(VectorSource(names_best_worst))
+names_best_worst_corp <- tm_clean(names_b_w_corp)
+all_tdm <- TermDocumentMatrix(names_best_worst_corp, control = list(tokenize = tokenizer))
+colnames(all_tdm) <- c("Common in Best", "Common in Worst")
+all_m <- as.matrix(all_tdm)
+
+comparison.cloud(all_m, max.words = 50, colors = c("darkcyan", "darkorange"), scale=c(2,.5), 
+                 title.size = 1.5, random.order = FALSE)
+
+```
+
+```{r bubble chart}
+bubble <- vgsales %>%
+      select(global_sales, critic_score, name, year, genre, user_count, publisher) %>%
+      mutate(critic_score=critic_score*10000) %>% 
+      #filter(genre != "Adventure") %>%
+      #filter(genre != "Fighting") %>%
+      #filter(genre != "Role-Playing") %>%
+      #filter(genre != "Puzzle") %>%
+      #filter(genre != "Simulation") %>%
+      #filter(global_sales<40) %>% 
+      filter(global_sales>10) %>% 
+      filter(critic_score>69) %>% 
+      filter(publisher %in% c("Electronic Arts", "Activision", "Ubisoft", "Take-Two Interactive")) %>% 
+      filter(year %in% 2000:2016)
+    
+
+
+bubblegraph <- bubble %>% 
+        ggplot(aes(y = global_sales, 
+                   x = user_count,
+                   color = genre,
+                   size= critic_score,
+                  )) +
+  scale_size(name="Critic Score", range= c(1,12.5), breaks=c(750000, 850000, 950000),
+                   labels=c(75, 85, 95))+
+        geom_point(shape=2, stroke=1.5)+ #choosing dotplot, controlling the shape by "shape" and color using "color" and outline width using "stroke" set to 0.5
+        labs(title= "*<span style = 'font-size:18pt'><span style='color:#081d58'>*Action and Shooter are the genres with the highest critic scores</span>**", x="User Count", y="Global Sales in $m", subtitle = " The Best Selling Games by Critic Score, Genre and Number of Players") +
+        #geom_hline(aes(yintercept = mean(global_sales)), color="red") +
+       ylim(10,22) +
+        theme_classic()+
+  scale_color_manual(name="Genre", values=c("#081d58", "#1d91c0", "#7fcdbb")) +
+  theme(
+          plot.title = ggtext::element_markdown(),
+          plot.title.position = "plot",
+          axis.ticks = element_blank(),
+          axis.title = element_text(color="#081d58"),
+          plot.subtitle = element_text(color="#081d58"),
+          axis.text=element_text(color="#081d58"),
+          legend.title=element_text(size=12, color="#081d58", face="bold"), #legend title edited
+        legend.text = element_text(size=9, color="#081d58"), #legend text edited
+        legend.key = element_blank())
+        #legend.spacing.y = unit(1.0, 'cm')) #removing legend key background)
+
+bubblegraph
+```
